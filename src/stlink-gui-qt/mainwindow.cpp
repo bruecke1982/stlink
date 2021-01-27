@@ -12,8 +12,9 @@
 #include <QPushButton>
 #include <QPlainTextEdit>
 #include <QtConcurrent>
-#include <QFuture>
+
 #include <QThread>
+#include <QTimer>
 #include "mainwindow.h"
 
 MainWindow::MainWindow(QMainWindow *pParent)
@@ -46,6 +47,7 @@ void MainWindow::initGui()
    m_pButtonFlash                      = new QPushButton("Flash");
    m_pLineEditFilePath                 = new QLineEdit();
    m_pPlainTextOutput                  = new QPlainTextEdit();
+   m_pTimerProgress                     = new QTimer(this);
    QHBoxLayout *pHLayoutLine  = new QHBoxLayout();
    pHLayoutLine->addWidget(pLabelChip);
    pHLayoutLine->addWidget(m_pLabelChip);
@@ -83,14 +85,17 @@ void MainWindow::initGui()
    pHLayoutLine->addWidget(m_pLineEditStartAddress);
    pVLayoutMain->addLayout(pHLayoutLine);
    pVLayoutMain->addWidget(m_pPlainTextOutput);
-
+   m_pTimerProgress->setInterval(500);
    setCentralWidget(pCentralWidget);
    pCentralWidget->setLayout(pVLayoutMain);
    connect(m_pButtonLoadFile,   &QPushButton::pressed, this, &MainWindow::slotButtonLoadFile);
    connect(m_pButtonConnect,    &QPushButton::pressed, this, &MainWindow::slotButtonConnect);
    connect(m_pButtonDisconnect, &QPushButton::pressed, this, &MainWindow::slotButtonDisconnect);
    connect(m_pButtonFlash,      &QPushButton::pressed, this, &MainWindow::slotButtonFlash);
+   connect(m_pTimerProgress,     &QTimer::timeout     , this, &MainWindow::slotTimerProgressElapsed);
    enbaleForms(false);
+
+
 }
 
 void MainWindow::enbaleForms(bool value)
@@ -225,39 +230,15 @@ void MainWindow::flashWorker()
 #endif // WORKAROUND
    //end workoround
    bool bParseStartAddress = false;
-   uint32_t startAddress = 0;
+
    QString sStartAddress = m_pLineEditStartAddress->text();
-   startAddress = sStartAddress.toUInt(&bParseStartAddress, 16);
+   m_uStartAddress = sStartAddress.toUInt(&bParseStartAddress, 16);
 
    if(m_aBinaryData.size() > 0)
    {
       if(bParseStartAddress == true)
       {
-         uint8_t *pdata = reinterpret_cast<uint8_t*>(m_aBinaryData.data());
-         int err = stlink_mwrite_flash(m_pStlinkHandle,
-                             pdata,
-                             (uint32_t)m_aBinaryData.size(),
-                             startAddress);
-         if(err < 0)
-         {
-            updateTextWithTime(Qt::red, "Write Flash error!");
-         }
-         else
-         {
-            updateTextWithTime(Qt::darkGreen, "Write Flash successfully!");
-            err = stlink_verify_write_flash(m_pStlinkHandle,
-                                      startAddress,
-                                      pdata,
-                                      (uint32_t)m_aBinaryData.size());
-            if(err < 0)
-            {
-               updateTextWithTime(Qt::red, "Verify write error!");
-            }
-            else
-            {
-               updateTextWithTime(Qt::darkGreen, "Verify Flash Ok!");
-            }
-         }
+         m_pTimerProgress->start();
       }
       else
       {
@@ -267,6 +248,93 @@ void MainWindow::flashWorker()
    else
    {
       updateTextWithTime(Qt::red, "No file load!");
+   }
+}
+
+void MainWindow::progressPoints(uint32_t count, const QString &starttext)
+{
+   QString progress = starttext;
+   for(uint32_t i=0;i<count;i++)
+   {
+      progress += " . ";
+   }
+   updateTextSameLine(Qt::blue, progress);
+}
+
+void MainWindow::slotTimerProgressElapsed()
+{
+   switch (m_Progress) {
+   case Progress::START_WRITE_FLASH:
+   {
+      updateTextWithTime(Qt::blue, "Start Flash\n");
+      m_uProgressCounter = 0;
+      m_pButtonFlash->setEnabled(false);
+      uint8_t *pdata = reinterpret_cast<uint8_t*>(m_aBinaryData.data());
+      m_QFutureWait = QtConcurrent::run(stlink_mwrite_flash, m_pStlinkHandle, pdata, (uint32_t)m_aBinaryData.size(), m_uStartAddress);
+      m_Progress = Progress::WAIT_WRITE_FLASH;
+   }
+      break;
+   case Progress::WAIT_WRITE_FLASH:
+      m_uProgressCounter++;
+      if(m_QFutureWait.isFinished())
+      {
+         m_Progress = Progress::FINISHED_WRITE_FLASH;
+      }
+      progressPoints(m_uProgressCounter, "FLASH:");
+      break;
+   case Progress::FINISHED_WRITE_FLASH:
+   {
+      int err = m_QFutureWait.result();
+      if(err < 0)
+      {
+         updateTextWithTime(Qt::red, "Write Flash error!");
+         m_Progress = Progress::FINISHED;
+      }
+      else
+      {
+         updateTextWithTime(Qt::darkGreen, "Write Flash finished!\n");
+         m_Progress = Progress::START_VERIFY_FLASH;
+      }
+   }
+      break;
+   case Progress::START_VERIFY_FLASH:
+   {
+      m_uProgressCounter = 0;
+      uint8_t *pdata = reinterpret_cast<uint8_t*>(m_aBinaryData.data());
+      m_QFutureWait = QtConcurrent::run(stlink_verify_write_flash, m_pStlinkHandle, m_uStartAddress, pdata, (uint32_t)m_aBinaryData.size());
+      m_Progress = Progress::WAIT_VERIFY_FLASH;
+   }
+      break;
+   case Progress::WAIT_VERIFY_FLASH:
+      m_uProgressCounter++;
+      if(m_QFutureWait.isFinished())
+      {
+         m_Progress = Progress::FINISHED_VERIFY_FLASH;
+      }
+      progressPoints(m_uProgressCounter, "FLASH Verfiy:");
+      break;
+   case Progress::FINISHED_VERIFY_FLASH:
+   {
+      int err = m_QFutureWait.result();
+      if(err < 0)
+      {
+         updateTextWithTime(Qt::red, "Write Verify Flash error!");
+
+      }
+      else
+      {
+         updateTextWithTime(Qt::darkGreen, "Write Verify Flash finished!");
+      }
+      m_Progress = Progress::FINISHED;
+   }
+      break;
+   case Progress::FINISHED:
+      m_uProgressCounter = 0;
+      m_Progress = Progress::START_WRITE_FLASH;
+      m_pTimerProgress->stop();
+      m_pButtonFlash->setEnabled(true);
+      break;
+
    }
 }
 
@@ -283,6 +351,24 @@ void MainWindow::updateText(int color, const QString &str)
    tf.setForeground(QBrush((Qt::GlobalColor)color));
    m_pPlainTextOutput->setCurrentCharFormat(tf);
    m_pPlainTextOutput->appendPlainText(str);
+}
+
+void MainWindow::updateTextSameLine(int color, const QString &str)
+{
+   QTextCharFormat tf;
+
+   QTextCursor cursor = m_pPlainTextOutput->textCursor();
+   int pos = cursor.position();
+   //cursor.movePosition(cursor.StartOfLine, cursor.KeepAnchor);
+
+   cursor.select(QTextCursor::LineUnderCursor);
+   cursor.removeSelectedText();
+   //cursor.deleteChar();
+   m_pPlainTextOutput->setTextCursor(cursor);
+   tf = m_pPlainTextOutput->currentCharFormat();
+   tf.setForeground(QBrush((Qt::GlobalColor)color));
+   m_pPlainTextOutput->setCurrentCharFormat(tf);
+   m_pPlainTextOutput->insertPlainText(str);
 }
 
 void MainWindow::closeEvent(QCloseEvent *bar)
