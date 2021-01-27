@@ -48,6 +48,7 @@ protected:
    virtual void clearGroupBoxDeviceInfo();
    virtual void updateTextWithTime(int color, const QString &str);
    virtual void updateText(int color, const QString &str);
+   virtual void flashWorker();
 private:
    stlink_t *m_pStlinkHandle = nullptr;
    QString m_sLastDirectory = "/home";

@@ -45,6 +45,7 @@ IF(DEFINED QT5_PATH)
             $<TARGET_FILE:Qt5::Widgets>
             $<TARGET_FILE:Qt5::Core>
             $<TARGET_FILE:Qt5::Gui>
+            $<TARGET_FILE:Qt5::Concurrent>
             $<TARGET_FILE_DIR:${EXE_NAME}>
     )
 
@@ -52,6 +53,7 @@ IF(DEFINED QT5_PATH)
                             Qt5::Widgets
                             Qt5::Gui
                             Qt5::Core
+                            Qt5::Concurrent
                           )
 	if (WIN32 OR APPLE)
 		ADD_CUSTOM_COMMAND(
@@ -68,8 +70,9 @@ IF(DEFINED QT5_PATH)
 	INSTALL(FILES "${LIBUSB_WIN_OUTPUT_FOLDER}/MS${ARCH}/dll/libusb-1.0.dll"
 			$<TARGET_FILE:Qt5::Widgets>
 			$<TARGET_FILE:Qt5::Core>
-            $<TARGET_FILE:Qt5::Gui>
-			DESTINATION "${CMAKE_BINARY_DIR}/install/${PROJECT_NAME}")
+                        $<TARGET_FILE:Qt5::Concurrent>
+                        $<TARGET_FILE:Qt5::Gui>
+                        DESTINATION "${CMAKE_BINARY_DIR}/install/${PROJECT_NAME}")
 	#INSTALL(TARGETS $<TARGET_FILE:Qt5::Widgets> DESTINATION ${CMAKE_INSTALL_BINDIR}/${PROJECT_NAME})
 ENDIF (DEFINED QT5_PATH)
 

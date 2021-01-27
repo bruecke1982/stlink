@@ -11,9 +11,10 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QPlainTextEdit>
+#include <QtConcurrent>
+#include <QFuture>
 #include <QThread>
 #include "mainwindow.h"
-
 
 MainWindow::MainWindow(QMainWindow *pParent)
    : QMainWindow(pParent)
@@ -212,6 +213,11 @@ void MainWindow::clearGroupBoxDeviceInfo()
 
 void MainWindow::slotButtonFlash()
 {
+   flashWorker();
+}
+
+void MainWindow::flashWorker()
+{
    //begin workoround for next flash
 #ifdef WORKAROUND
    slotButtonDisconnect();
@@ -231,7 +237,7 @@ void MainWindow::slotButtonFlash()
          int err = stlink_mwrite_flash(m_pStlinkHandle,
                              pdata,
                              (uint32_t)m_aBinaryData.size(),
-                             startAddress);         
+                             startAddress);
          if(err < 0)
          {
             updateTextWithTime(Qt::red, "Write Flash error!");
@@ -288,4 +294,3 @@ MainWindow::~MainWindow()
 {
 
 }
-
