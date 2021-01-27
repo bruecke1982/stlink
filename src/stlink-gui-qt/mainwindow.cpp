@@ -10,6 +10,7 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QPlainTextEdit>
 #include <QThread>
 #include "mainwindow.h"
 
@@ -31,16 +32,19 @@ void MainWindow::initGui()
    QLabel *pLabelFlashSize             = new QLabel("Flash size:");
    QLabel *pLabelRamSize               = new QLabel("Ram size:");
    QLabel *pLabelStartAddress          = new QLabel("Start Address:");
+   QLabel *pLabelFilePath              = new QLabel("Path:");
    m_pGroupBoxDeviceInfo               = new QGroupBox("Device");
    m_pLabelChip                        = new QLabel();
    m_pLabelCore                        = new QLabel();
    m_pLabelFlashSize                   = new QLabel();
    m_pLabelRamSize                     = new QLabel();
    m_pLineEditStartAddress             = new QLineEdit("0x08000000");
-   m_pButtonOpen                       = new QPushButton("Open");
+   m_pButtonLoadFile                   = new QPushButton("Load File");
    m_pButtonConnect                    = new QPushButton("Connect");
    m_pButtonDisconnect                 = new QPushButton("Disconnect");
    m_pButtonFlash                      = new QPushButton("Flash");
+   m_pLineEditFilePath                 = new QLineEdit();
+   m_pPlainTextOutput                  = new QPlainTextEdit();
    QHBoxLayout *pHLayoutLine  = new QHBoxLayout();
    pHLayoutLine->addWidget(pLabelChip);
    pHLayoutLine->addWidget(m_pLabelChip);
@@ -63,20 +67,25 @@ void MainWindow::initGui()
    pVLayoutGroupBoxInfo->addLayout(pHLayoutLine);
    m_pGroupBoxDeviceInfo->setLayout(pVLayoutGroupBoxInfo);
    pHLayoutLine = new QHBoxLayout();
-   pHLayoutLine->addWidget(m_pButtonOpen);
+   pHLayoutLine->addWidget(m_pButtonLoadFile);
    pHLayoutLine->addWidget(m_pButtonConnect);
    pHLayoutLine->addWidget(m_pButtonDisconnect);
    pHLayoutLine->addWidget(m_pButtonFlash);
+   pVLayoutMain->addLayout(pHLayoutLine);
+   pHLayoutLine = new QHBoxLayout();
+   pHLayoutLine->addWidget(pLabelFilePath);
+   pHLayoutLine->addWidget(m_pLineEditFilePath);
    pVLayoutMain->addLayout(pHLayoutLine);
    pVLayoutMain->addWidget(m_pGroupBoxDeviceInfo);
    pHLayoutLine = new QHBoxLayout();
    pHLayoutLine->addWidget(pLabelStartAddress);
    pHLayoutLine->addWidget(m_pLineEditStartAddress);
    pVLayoutMain->addLayout(pHLayoutLine);
+   pVLayoutMain->addWidget(m_pPlainTextOutput);
 
    setCentralWidget(pCentralWidget);
    pCentralWidget->setLayout(pVLayoutMain);
-   connect(m_pButtonOpen,       &QPushButton::pressed, this, &MainWindow::slotButtonOpenFile);
+   connect(m_pButtonLoadFile,   &QPushButton::pressed, this, &MainWindow::slotButtonLoadFile);
    connect(m_pButtonConnect,    &QPushButton::pressed, this, &MainWindow::slotButtonConnect);
    connect(m_pButtonDisconnect, &QPushButton::pressed, this, &MainWindow::slotButtonDisconnect);
    connect(m_pButtonFlash,      &QPushButton::pressed, this, &MainWindow::slotButtonFlash);
@@ -92,9 +101,18 @@ void MainWindow::enbaleForms(bool value)
    m_pButtonFlash->setEnabled(value);
 }
 
-void MainWindow::slotButtonOpenFile()
+void MainWindow::slotButtonLoadFile()
 {
-   QString fileName = QFileDialog::getOpenFileName(this, tr("Load File"), m_sLastDirectory, tr("Image Files (*.bin)"));
+   QString fileName = "";
+   if(m_pLineEditFilePath->text() != "")
+   {
+      fileName = m_pLineEditFilePath->text();
+   }
+   else
+   {
+      fileName = QFileDialog::getOpenFileName(this, tr("Load File"), m_sLastDirectory, tr("Image Files (*.bin)"));
+      m_pLineEditFilePath->setText(fileName);
+   }
    if(fileName != "")
    {
       m_sLastDirectory = QFileInfo(fileName).absolutePath();
@@ -102,12 +120,11 @@ void MainWindow::slotButtonOpenFile()
       if (file.open(QIODevice::ReadOnly))
       {
          m_aBinaryData = file.readAll();
+         updateTextWithTime(Qt::blue, "File successful loaded!");
       }
       else
       {
-         QMessageBox msgBox(this);
-         msgBox.setText("Can not read file");
-         msgBox.exec();
+         updateTextWithTime(Qt::red, "Error can not read file!");
       }
    }
 }
@@ -147,21 +164,25 @@ void MainWindow::slotButtonConnect()
       }
       refreshGroupBoxDeviceInfo();
       enbaleForms(true);
+      updateTextWithTime(Qt::blue, "Open st-link device!");
    }
    else
    {
-      QMessageBox msgBox(this);
-      msgBox.setText("Can not open st-link device");
-      msgBox.exec();
+      updateTextWithTime(Qt::red, "Can not open st-link device!");
    }
 }
 
 void MainWindow::slotButtonDisconnect()
 {
-   stlink_exit_debug_mode(m_pStlinkHandle);
-   stlink_close(m_pStlinkHandle);
+   if(m_pStlinkHandle != nullptr)
+   {
+      stlink_exit_debug_mode(m_pStlinkHandle);
+      stlink_close(m_pStlinkHandle);
+      m_pStlinkHandle = nullptr;
+   }
    enbaleForms(false);
    clearGroupBoxDeviceInfo();
+   updateTextWithTime(Qt::blue, "Close st-link device!");
 }
 
 void MainWindow::refreshGroupBoxDeviceInfo()
@@ -191,6 +212,12 @@ void MainWindow::clearGroupBoxDeviceInfo()
 
 void MainWindow::slotButtonFlash()
 {
+   //begin workoround for next flash
+#ifdef WORKAROUND
+   slotButtonDisconnect();
+   slotButtonConnect();
+#endif // WORKAROUND
+   //end workoround
    bool bParseStartAddress = false;
    uint32_t startAddress = 0;
    QString sStartAddress = m_pLineEditStartAddress->text();
@@ -204,42 +231,57 @@ void MainWindow::slotButtonFlash()
          int err = stlink_mwrite_flash(m_pStlinkHandle,
                              pdata,
                              (uint32_t)m_aBinaryData.size(),
-                             startAddress);
+                             startAddress);         
          if(err < 0)
          {
-            QMessageBox msgBox(this);
-            msgBox.setText("Error write flash");
-            msgBox.exec();
+            updateTextWithTime(Qt::red, "Write Flash error!");
          }
          else
          {
-            //begin workoround for next flash
-            slotButtonDisconnect();
-            slotButtonConnect();
-            //end workoround
-            QMessageBox msgBox(this);
-            msgBox.setText("Write successful");
-            msgBox.exec();
+            updateTextWithTime(Qt::darkGreen, "Write Flash successfully!");
+            err = stlink_verify_write_flash(m_pStlinkHandle,
+                                      startAddress,
+                                      pdata,
+                                      (uint32_t)m_aBinaryData.size());
+            if(err < 0)
+            {
+               updateTextWithTime(Qt::red, "Verify write error!");
+            }
+            else
+            {
+               updateTextWithTime(Qt::darkGreen, "Verify Flash Ok!");
+            }
          }
       }
       else
       {
-         QMessageBox msgBox(this);
-         msgBox.setText("Can not parse start address");
-         msgBox.exec();
+         updateTextWithTime(Qt::red, "Can not parse start address!");
       }
    }
    else
    {
-      QMessageBox msgBox(this);
-      msgBox.setText("No file load");
-      msgBox.exec();
+      updateTextWithTime(Qt::red, "No file load!");
    }
+}
+
+void MainWindow::updateTextWithTime(int color, const QString &str)
+{
+   QString sMessage = QTime::currentTime().toString() + " " + str;
+   updateText(color, sMessage);
+}
+
+void MainWindow::updateText(int color, const QString &str)
+{
+   QTextCharFormat tf;
+   tf = m_pPlainTextOutput->currentCharFormat();
+   tf.setForeground(QBrush((Qt::GlobalColor)color));
+   m_pPlainTextOutput->setCurrentCharFormat(tf);
+   m_pPlainTextOutput->appendPlainText(str);
 }
 
 void MainWindow::closeEvent(QCloseEvent *bar)
 {
-
+   slotButtonDisconnect();
 }
 
 MainWindow::~MainWindow()
