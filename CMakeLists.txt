@@ -295,9 +295,10 @@ endif ()
 # Additional build tasks
 ###
 
-add_subdirectory(src/stlink-gui)  # contains subordinate CMakeLists to build GUI
-add_subdirectory(tests)           # contains subordinate CMakeLists to build test executables
-add_subdirectory(cmake/packaging) # contains subordinate CMakeLists to build packages
+add_subdirectory(src/stlink-gui)     # contains subordinate CMakeLists to build GUI
+add_subdirectory(src/stlink-gui-qt)  # contains subordinate CMakeLists to build GUI in Qt
+add_subdirectory(tests)              # contains subordinate CMakeLists to build test executables
+add_subdirectory(cmake/packaging)    # contains subordinate CMakeLists to build packages
 
 option(STLINK_GENERATE_MANPAGES "Generate manpages with pandoc" OFF)
 add_subdirectory(doc/man)         # contains subordinate CMakeLists to generate manpages
