@@ -94,9 +94,10 @@ void MainWindow::enbaleForms(bool value)
 
 void MainWindow::slotButtonOpenFile()
 {
-   QString fileName = QFileDialog::getOpenFileName(this, tr("Load File"), "/home/", tr("Image Files (*.bin)"));
+   QString fileName = QFileDialog::getOpenFileName(this, tr("Load File"), m_sLastDirectory, tr("Image Files (*.bin)"));
    if(fileName != "")
    {
+      m_sLastDirectory = QFileInfo(fileName).absolutePath();
       QFile file(fileName);
       if (file.open(QIODevice::ReadOnly))
       {
@@ -212,6 +213,10 @@ void MainWindow::slotButtonFlash()
          }
          else
          {
+            //begin workoround for next flash
+            slotButtonDisconnect();
+            slotButtonConnect();
+            //end workoround
             QMessageBox msgBox(this);
             msgBox.setText("Write successful");
             msgBox.exec();

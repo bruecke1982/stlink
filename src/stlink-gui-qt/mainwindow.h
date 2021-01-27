@@ -45,6 +45,7 @@ protected:
    virtual void clearGroupBoxDeviceInfo();
 private:
    stlink_t *m_pStlinkHandle = nullptr;
+   QString m_sLastDirectory = "/home";
 };
 
 #endif // MAINWINDOW_H_
